@@ -1,0 +1,71 @@
+buildscript {
+    repositories {
+        mavenCentral()
+        mavenLocal()
+    }
+
+    dependencies {
+        classpath "org.springframework.boot:spring-boot-gradle-plugin:$springBootVersion"
+        classpath "com.avast.gradle:gradle-docker-compose-plugin:$dockerComposePluginVersion"
+    }
+}
+
+apply plugin: 'docker-compose'
+
+subprojects {
+    apply plugin: "java"
+    apply plugin: "org.springframework.boot"
+    sourceCompatibility = 11
+    targetCompatibility = 11
+
+    repositories {
+        mavenCentral()
+        mavenLocal()
+
+        dependencies {
+            compileOnly "org.projectlombok:lombok:$lombokVersion"
+            annotationProcessor "org.projectlombok:lombok:$lombokVersion"
+        }
+    }
+
+    test {
+        useJUnitPlatform()
+    }
+}
+
+dockerCompose {
+    removeOrphans = true
+    retainContainersOnStartupFailure = true
+    dockerComposeStopTimeout = java.time.Duration.ofSeconds(1)
+
+    mysql {
+        projectName = null
+        useComposeFiles = ["docker-compose.yml"]
+        startedServices = ["mysql"]
+    }
+
+    application {
+        projectName = null
+        useComposeFiles = ["docker-compose.yml"]
+        startedServices = ["oauth2", "client", "gateway", "article", "comment"]
+    }
+}
+
+subprojects.each {
+    applicationComposeUp.dependsOn(":" + it.name + ":assemble")
+}
+
+applicationComposeUp.dependsOn(mysqlComposeUp)
+applicationComposeDown.dependsOn(mysqlComposeDown)
+
+task buildAndStartServices(type: GradleBuild) {
+    tasks = ["applicationComposeUp"]
+}
+
+task stopServices(type: GradleBuild) {
+    tasks = ["applicationComposeDown", "removeNoneImage"]
+}
+
+task removeNoneImage(type: Exec) {
+    commandLine 'sh', '-c', './remove_none_image.sh'
+}
